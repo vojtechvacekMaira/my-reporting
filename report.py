@@ -22,10 +22,9 @@ load_dotenv()
 WEBHOOK_URL    = os.environ["SLACK_WEBHOOK_URL"]
 
 BQ_COST_TABLE  = "profi-hellocomp-data-prod-0861.marco.out_marketing"
-BQ_COST_PROJ   = "profi-hellocomp-data-prod-0861"
+BQ_PROJ        = "profi-hellocomp-data-prod-0861"
 
-BQ_SHOP_TABLE  = "shoptet-exports.shoptet_export.hellocomp_customers_overall"
-BQ_SHOP_PROJ   = "shoptet-exports"
+BQ_SHOP_TABLE  = "profi-hellocomp-data-prod-0861.shoptet.hellocomp_customers_overall"
 
 # Paid order statuses (shoptet)
 PAID_STATUSES  = "('Odesláno', 'Osobní odběr', 'Vyřizuje se', 'Vyřízeno')"
@@ -33,7 +32,7 @@ PAID_STATUSES  = "('Odesláno', 'Osobní odběr', 'Vyřizuje se', 'Vyřízeno')"
 
 # ── BigQuery – cost ───────────────────────────────────────────────────────────
 
-def get_cost(bq_cost: bigquery.Client, date_from: date, date_to: date) -> float:
+def get_cost(bq: bigquery.Client, date_from: date, date_to: date) -> float:
     """Sum cost_czk for all paid campaigns (GAds, Sklik, Meta). READ ONLY."""
     q = f"""
         SELECT COALESCE(SUM(cost_czk), 0) AS cost
@@ -41,7 +40,7 @@ def get_cost(bq_cost: bigquery.Client, date_from: date, date_to: date) -> float:
         WHERE date BETWEEN '{date_from}' AND '{date_to}'
           AND cost_czk > 0
     """
-    for row in bq_cost.query(q).result():
+    for row in bq.query(q).result():
         return float(row.cost)
     return 0.0
 
@@ -49,7 +48,7 @@ def get_cost(bq_cost: bigquery.Client, date_from: date, date_to: date) -> float:
 # ── BigQuery – orders & revenue ───────────────────────────────────────────────
 
 def get_orders_and_revenue(
-    bq_shop: bigquery.Client,
+    bq: bigquery.Client,
     date_from: date,
     date_to: date,
 ) -> tuple[int, float]:
@@ -75,7 +74,7 @@ def get_orders_and_revenue(
           AND sourceName = 'E-shop'
           AND statusName IN {PAID_STATUSES}
     """
-    for row in bq_shop.query(q).result():
+    for row in bq.query(q).result():
         return int(row.orders or 0), float(row.revenue_czk or 0.0)
     return 0, 0.0
 
@@ -118,8 +117,7 @@ def build_table(
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    bq_cost = bigquery.Client(project=BQ_COST_PROJ)
-    bq_shop = bigquery.Client(project=BQ_SHOP_PROJ)
+    bq = bigquery.Client(project=BQ_PROJ)
 
     today     = date.today()
     yesterday = today - timedelta(days=1)
@@ -127,12 +125,12 @@ def main():
 
     print(f"Fetching data for yesterday ({yesterday}) and MTD ({mtd_start}–{yesterday})…")
 
-    cost_yd  = get_cost(bq_cost, yesterday,  yesterday)
-    cost_mtd = get_cost(bq_cost, mtd_start,  yesterday)
+    cost_yd  = get_cost(bq, yesterday,  yesterday)
+    cost_mtd = get_cost(bq, mtd_start,  yesterday)
     print(f"Cost YD: {cost_yd:.0f} | MTD: {cost_mtd:.0f}")
 
-    orders_yd,  rev_yd  = get_orders_and_revenue(bq_shop, yesterday,  yesterday)
-    orders_mtd, rev_mtd = get_orders_and_revenue(bq_shop, mtd_start,  yesterday)
+    orders_yd,  rev_yd  = get_orders_and_revenue(bq, yesterday,  yesterday)
+    orders_mtd, rev_mtd = get_orders_and_revenue(bq, mtd_start,  yesterday)
     print(f"Revenue YD: {rev_yd:.0f} ({orders_yd} orders) | MTD: {rev_mtd:.0f} ({orders_mtd} orders)")
 
     pno_yd  = (cost_yd  / rev_yd  * 100) if rev_yd  > 0 else 0.0
