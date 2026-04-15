@@ -36,9 +36,12 @@ def get_cost(bq: bigquery.Client, date_from: date, date_to: date) -> float:
     """Sum cost_czk for all paid campaigns (GAds, Sklik, Meta). READ ONLY."""
     q = f"""
         SELECT COALESCE(SUM(cost_czk), 0) AS cost
-        FROM `{BQ_COST_TABLE}`
-        WHERE date BETWEEN '{date_from}' AND '{date_to}'
-          AND cost_czk > 0
+        FROM (
+            SELECT DISTINCT date, account_name, campaign_name, source_medium, cost_czk
+            FROM `{BQ_COST_TABLE}`
+            WHERE date BETWEEN '{date_from}' AND '{date_to}'
+              AND cost_czk > 0
+        )
     """
     for row in bq.query(q).result():
         return float(row.cost)
