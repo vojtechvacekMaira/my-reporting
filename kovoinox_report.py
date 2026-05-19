@@ -2,8 +2,10 @@
 Kovoinox daily Slack report
 READ ONLY – only SELECT queries, no data is ever modified.
 
-Cost    → profi-kovoinox-prod-228.l0_marko_kovoinox.vw_campaign_marketing_data
-Revenue → same table, event_name = 'purchase' (GA4 revenue, all channels)
+Cost + Revenue → profi-kovoinox-prod-228.l0_marko_kovoinox.vw_campaign_marketing_data
+  The view has one row per (date, campaign, event_name). cost_czk and ga4_revenue_czk
+  are denormalised across all event_name rows, so a plain SUM (no DISTINCT, no
+  event_name filter) gives the correct totals matching the Looker dashboard.
 
 Metrics : Cost (CZK), Revenue GA4 (CZK), PNO
 Periods : Yesterday + MTD
@@ -27,40 +29,28 @@ BQ_PROJ       = "profi-kovoinox-prod-228"
 # ── BigQuery – cost ───────────────────────────────────────────────────────────
 
 def get_cost(bq: bigquery.Client, date_from: date, date_to: date) -> float:
-    """Sum cost_czk for all paid campaigns (GAds, Sklik, Meta). READ ONLY."""
     q = f"""
         SELECT COALESCE(SUM(cost_czk), 0) AS cost
-        FROM (
-            SELECT DISTINCT date, account_name, campaign_name, source_medium, cost_czk
-            FROM `{BQ_COST_TABLE}`
-            WHERE date BETWEEN '{date_from}' AND '{date_to}'
-              AND cost_czk > 0
-        )
+        FROM `{BQ_COST_TABLE}`
+        WHERE date BETWEEN '{date_from}' AND '{date_to}'
+          AND cost_czk > 0
     """
     for row in bq.query(q).result():
         return float(row.cost)
     return 0.0
 
 
-# ── BigQuery – orders & revenue (GA4) ────────────────────────────────────────
+# ── BigQuery – revenue (GA4) ──────────────────────────────────────────────────
 
-def get_orders_and_revenue(
-    bq: bigquery.Client,
-    date_from: date,
-    date_to: date,
-) -> tuple[int, float]:
-    """GA4 revenue and conversions from out_marketing, event_name = 'purchase'. READ ONLY."""
+def get_revenue(bq: bigquery.Client, date_from: date, date_to: date) -> float:
     q = f"""
-        SELECT
-            ROUND(COALESCE(SUM(conversions), 0)) AS orders,
-            COALESCE(SUM(ga4_revenue_czk), 0)    AS revenue_czk
+        SELECT COALESCE(SUM(ga4_revenue_czk), 0) AS revenue_czk
         FROM `{BQ_COST_TABLE}`
         WHERE date BETWEEN '{date_from}' AND '{date_to}'
-          AND event_name = 'purchase'
     """
     for row in bq.query(q).result():
-        return int(row.orders or 0), float(row.revenue_czk or 0.0)
-    return 0, 0.0
+        return float(row.revenue_czk)
+    return 0.0
 
 
 # ── Formatting ────────────────────────────────────────────────────────────────
@@ -107,12 +97,12 @@ def main():
 
     print(f"Fetching data for yesterday ({yesterday}) and MTD ({mtd_start}–{yesterday})…")
 
-    cost_yd  = get_cost(bq, yesterday,  yesterday)
-    cost_mtd = get_cost(bq, mtd_start,  yesterday)
+    cost_yd  = get_cost(bq, yesterday, yesterday)
+    cost_mtd = get_cost(bq, mtd_start, yesterday)
     print(f"Cost YD: {cost_yd:.0f} | MTD: {cost_mtd:.0f}")
 
-    _orders_yd, rev_yd  = get_orders_and_revenue(bq, yesterday, yesterday)
-    _orders_mtd, rev_mtd = get_orders_and_revenue(bq, mtd_start, yesterday)
+    rev_yd  = get_revenue(bq, yesterday, yesterday)
+    rev_mtd = get_revenue(bq, mtd_start, yesterday)
     print(f"Revenue YD: {rev_yd:.0f} | MTD: {rev_mtd:.0f}")
 
     pno_yd  = (cost_yd  / rev_yd  * 100) if rev_yd  > 0 else 0.0
