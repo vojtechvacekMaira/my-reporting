@@ -22,10 +22,10 @@ load_dotenv()
 
 WEBHOOK_URL   = os.environ["SLACK_WEBHOOK_URL"]
 
-BQ_COST_TABLE = "client-reporting-395213.out_marketing.kovoinox_sro_8264"
-BQ_PROJ       = "client-reporting-395213"
+BQ_COST_TABLE = "profi-kovoinox-prod-228.l0_marko_kovoinox.vw_campaign_marketing_data"
+BQ_PROJ       = "profi-kovoinox-prod-228"
 
-BQ_SHOP_TABLE = "shoptet-exports.shoptet_export.kovoinox_customers"
+BQ_SHOP_TABLE = "profi-kovoinox-prod-228.l0_upgates_kovoinox.vw_kovoinox_customers"
 
 # All statuses except cancelled / failed payment
 EXCLUDED_STATUSES = "('Storno', 'Platba selhala')"
