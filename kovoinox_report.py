@@ -3,9 +3,9 @@ Kovoinox daily Slack report
 READ ONLY – only SELECT queries, no data is ever modified.
 
 Cost + Revenue → profi-kovoinox-prod-228.l0_marko_kovoinox.vw_campaign_marketing_data
-  The view has one row per (date, campaign, event_name). cost_czk and ga4_revenue_czk
-  are denormalised across all event_name rows, so a plain SUM (no DISTINCT, no
-  event_name filter) gives the correct totals matching the Looker dashboard.
+  The view has one row per (date, campaign, event_name). Filtering to
+  event_name = 'purchase' avoids double-counting cost and isolates purchase revenue,
+  matching the "System + GA4 data YoY" dashboard tiles.
 
 Metrics : Cost (CZK), Revenue GA4 (CZK), PNO
 Periods : Yesterday + MTD
@@ -33,6 +33,7 @@ def get_cost(bq: bigquery.Client, date_from: date, date_to: date) -> float:
         SELECT COALESCE(SUM(cost_czk), 0) AS cost
         FROM `{BQ_COST_TABLE}`
         WHERE date BETWEEN '{date_from}' AND '{date_to}'
+          AND event_name = 'purchase'
           AND cost_czk > 0
     """
     for row in bq.query(q).result():
@@ -47,6 +48,7 @@ def get_revenue(bq: bigquery.Client, date_from: date, date_to: date) -> float:
         SELECT COALESCE(SUM(ga4_revenue_czk), 0) AS revenue_czk
         FROM `{BQ_COST_TABLE}`
         WHERE date BETWEEN '{date_from}' AND '{date_to}'
+          AND event_name = 'purchase'
     """
     for row in bq.query(q).result():
         return float(row.revenue_czk)
